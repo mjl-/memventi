@@ -1,0 +1,111 @@
+.\" public domain, by mechiel lukkien, 2007-02-23
+.Dd February 23, 2007
+.Dt memventi 8
+.Os memventi
+.Sh NAME
+.Nm memventi
+.Nd venti daemon with in-memory index
+.Sh SYNOPSIS
+.Nm
+.Op Fl fvD
+.Op Fl r Ar host!port
+.Op Fl w Ar host!port
+.Op Fl i Ar indexfile
+.Op Fl d Ar datafile
+.Ar headscorewidth entryscorewidth addrwidth
+.Sh DESCRIPTION
+.Nm Memventi
+is a small venti daemon that runs on unix.  A venti daemon allows for storing and retrieving data (in blocks of up to 56 KB) with a numeric type and its SHA1 hash (called score) as address, all with a simple protocol on top of TCP.  Once written, data cannot be removed.  If data needs to be stored and has a score that is already present, the data is not written again.  Authentication is not needed, anyone can read any block.  The idea is that the address, the score, is just a shorter version of the "content":  only if you know the content, you can determine the score and if you know the score, you know the content.  A more advanced venti is used by Plan 9 for filesystem block storage and backup storage.
+.Pp
+The data blocks are written sequentially to the specified
+.Ar datafile
+or 
+.Pa data
+by default.  This file is opened append-only, therefore previously written data cannot be modified or removed by memventi.  Each block has a block header prepended to it, the header contains the following information: score of the block and the type of the block (both part of the address) and the length of the data.
+In the
+.Ar indexfile ,
+.Pa index
+by default, a part of the score, the type and the offset of the header of the corresponding data block in the data file, is stored.  This file is loaded into main memory (and verified or fixed to match the data file) at startup and remains in memory throughout operation for fast score lookups.  This contrasts with the Plan 9 venti which reads scores from a big hashtable on index disks (and with a cache) to do lookups of scores.  The scheme used by
+.Nm memventi
+cannot store as many data blocks, because main memory is limited.  It is however, easier to setup and maintain.
+.Pp
+Main memory usage is reduced as much as possible.  For each block, the numeric type is kept in main memory and only just enough of the score, which is 160 bits in total.  For reading, a "hit" of the in-memory score-part often means the data block is found with one disk read (the header in the data file is checked to see whether the entire score matches).  Sometimes, a hit was false and the block in the data file was different (thus, the score might not be present at all).  At other times multiple "hits" are found when reading a score.  In this case, the data blocks for the hits have to be read from data file until the full score is encountered.
+The
+.Ar headscorewidth ,
+.Ar entryscorewidth and
+.Ar addrwidth
+can be specified such that a double hit only occurs once every 1000 scores (when the venti is full), triple hits will occur much less often.
+For writes, if the in-memory index has one or more hits, the disk has to be checked.  If the data is already present, it is not written again.  Otherwise, it is simply appended to the data and index file and an entry put in memory.
+.Pp
+.Ar Headscorewidth
+is the number of bits of the score used for the number of buckets in the lookup table.  For example, 9 bits means there will be 512 buckets (heads) in the lookup table.
+.Ar Entryscorewidth
+is the number of bits of the score used for each entry (one for each data block) in the buckets.
+.Ar Addrwidth
+is the number of bits to use for addressing in the datafile.  Fewer bits results in less memory used, but also reduces the maximum memventi storage capacity.  Appropriate values for these variables can be determined using the program
+.Nm calc.py .
+It returns reasonable values when given a maximum data file size, average block size and collisioninterval (1000 means one of every 1000 scores may have a collision).  More parameters may be specified to further narrow down the right values.
+.Ss Options
+.Bl -tag -width Fl
+.It Fl f
+Do not daemonize, stay in foreground.
+.It Fl v
+Be more verbose (to syslog).
+.It Fl D
+Print debugging information to standard error.
+.It Fl r Ar host!port
+Listen on the specified TCP port, on the specified host.  The port-part (including the exclamation mark) is optional and defaults to 17034.  The connection does not allow writes, only reads.  This can be used to prevent public memventi's to be filled up.
+.It Fl w Ar host!port
+Same as the
+.Fl r
+option, but does allow writing.  If no
+.Fl r
+or
+.Fl w
+options are specified, memventi listens read/write on localhost!17034.
+.It Fl i Ar indexfile
+File to write index entries to,
+.Ar index
+by default.
+.It Fl d Ar datafile
+File to write data blocks to,
+.Ar data
+by default.
+.El
+.Pp
+When a SIGUSR1 is received, a histogram of the lengths of the heads (the number of blocks in the heads) is printed to standard out.  When a SIGUSR2 is received, a histogram of the number of disk accesses needed to fulfill operations is printed to standard out.  The only other statistics are written to syslog at startup, they contain the number of bytes read, whether the index was synchronized and how long startup up took.
+.Pp
+Whenever a problem is encountered, such as an error when writing a block to a file, memventi puts itself in degraded mode.  In this mode, only read operations are handled.  When it goes in degraded mode, a message is written to syslog clearly explaining the problem.
+.Sh SEE ALSO
+From Plan 9 from User Space:
+.Xr vac 1 ,
+.Xr venti 1 ,
+.Xr venti 3 ,
+.Xr vacfs 4 ,
+.Xr venti 7 ,
+.Xr venti 8 ,
+.Pp
+The paper titled
+"Venti: a new approach to archival storage", by Sean Quinlan and Sean Dorward.
+.Pp
+The
+.Nm memventi
+website, http://www.xs4all.nl/~mechiel/projects/memventi/.
+.Sh AUTHORS
+Mechiel Lukkien, <mechiel@xs4all.nl> or <mechiel@ueber.net>.  All files are in the public domain.
+.Sh CAVEATS
+The memory used for the lookup table buckets and entries is mlock-ed so lookups are always fast.  Some systems, notably OpenBSD/i386 do not allow non-root users to mlock memory.
+.Pp
+Data blocks are not compressed.
+.Pp
+Memventi is not optimized for speed.
+.Pp
+There are no tools to aid in data recovery, e.g. checking the data file for consistency and fixing problems.  For now,
+.Nm dd
+should be the biggest help to remove trailing partially written blocks.
+.Pp
+Starting up is slow since the entire table has to be read in memory.
+.Pp
+Calc.py should be explained better.  Some important things:  start-end ranges can be specified as numbers with a prefix such as k, m, g, etc.  Multiple ranges can be specified, each separated by a comma.
+.Pp
+Memventi first binds to addresses, then initializes (involving a fork) and only then starts accepting connections.  On OpenBSD, this does not work:  new connections are not "seen" by the accept.  The soluation is to first initialize and then bind and accept.

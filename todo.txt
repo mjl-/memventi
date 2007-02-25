@@ -1,0 +1,12 @@
+- read 16 last disk entries (using index offset as start) and verify
+- multiple procs for accessing datafile, reads concurrent, stores queued.
+- try to read index faster
+- speed up fixing index file, queue entries to write, queue blocks that have been written?
+- tool to find last valid lump and possibly invalid remainder (for half write during crash/power outage) 
+- look at protocol handling
+- to find duplicates: readdata | sed 's/.* score=\([^ ]*\).*/\1/' | sort | uniq -d (need to make readdata.c again)
+- compression of blocks?
+- multiple threads per connection
+- make lock for diskhisto
+- see if recovery is okay by killing a running memventi and restarting it
+- see how much overhead looking through data in a chain is.  up to how many entries in a head can we handle?
