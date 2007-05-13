@@ -8,6 +8,7 @@ typedef struct Netaddr Netaddr;
 enum {
 	Listenmax	= 32,
 	Addressesmax	= 16,
+	Stacksize	= 32*1024,
 };
 
 enum {
@@ -987,6 +988,7 @@ listenproc(void *p)
 	Args *args;
 	int fd;
 	int listenfd, allowwrite;
+	pthread_attr_t attrs;
 
 	args = (Args *)p;
 	listenfd = args->fd;
@@ -1014,8 +1016,13 @@ listenproc(void *p)
 		thread = malloc(sizeof thread[0]);
 		if(thread == nil)
 			goto error;
-		if(pthread_create(thread, nil, connproc, args) != 0)
+		if(pthread_attr_init(&attrs) != 0
+			|| pthread_attr_setstacksize(&attrs, Stacksize) != 0
+			|| pthread_attr_setdetachstate(&attrs, PTHREAD_CREATE_DETACHED) != 0)
 			goto error;
+		if(pthread_create(thread, &attrs, connproc, args) != 0)
+			goto error;
+		pthread_attr_destroy(&attrs);
 		free(thread);
 		continue;
 
@@ -1127,12 +1134,17 @@ void
 startlisten(pthread_t *thread, int listenfd,  int allowwrite)
 {
 	Args *args;
+	pthread_attr_t attrs;
 
 	args = emalloc(sizeof args[0]);
 	args->fd = listenfd;
 	args->allowwrite = allowwrite;
-	if(pthread_create(thread, nil, listenproc, args) != 0)
+	if(pthread_attr_init(&attrs) != 0
+		|| pthread_attr_setstacksize(&attrs, Stacksize) != 0)
+		errsyslog(1, "error setting stacksize for listenproc");
+	if(pthread_create(thread, &attrs, listenproc, args) != 0)
 		errsyslog(1, "error creating listenproc");
+	pthread_attr_destroy(&attrs);
 }
 
 
@@ -1155,6 +1167,7 @@ main(int argc, char *argv[])
 	int readfds[Listenmax];
 	int writefds[Listenmax];
 	int i;
+	pthread_attr_t attrs;
 
 	fflag = 0;
 	vflag = 0;
@@ -1248,8 +1261,13 @@ main(int argc, char *argv[])
 		startlisten(&readlistenthread[i], readfds[i], 0);
 	for(i = 0; i < nwritelistens; i++)
 		startlisten(&writelistenthread[i], writefds[i], 1);
-	if(pthread_create(&syncprocthread, nil, syncproc, nil) != 0)
+
+	if(pthread_attr_init(&attrs) != 0
+		|| pthread_attr_setstacksize(&attrs, Stacksize) != 0)
+		errsyslog(1, "error setting stacksize for listenproc");
+	if(pthread_create(&syncprocthread, &attrs, syncproc, nil) != 0)
 		errsyslog(1, "error creating syncproc");
+	pthread_attr_destroy(&attrs);
 
 	sigaddset(&mask, SIGINT);
 	sigaddset(&mask, SIGTERM);
