@@ -1,0 +1,34 @@
+# status
+
+should be stable.  in use for some time.  note that this software
+has been superseded by ventisrv for inferno and is not developed
+further.
+
+
+# intro
+
+memventi is a venti daemon, it speaks the same venti protocol as
+the real venti in Plan 9 from Bell Labs.  in short, it is a storage
+server that stores data blocks up to 56kb using its sha1 hash (called
+its score) to address it.  the main difference between memventi and
+venti is that where venti keeps an index of present scores in a big
+on-disk lookup table, memventi keeps the index in memory (in an
+memory-efficient manner).  this allows for a simpler design though
+with limited storage capacity.  the manual page for memventi hopefully
+answers most questions, if not you can always ask me by email.
+
+
+# documentation
+
+see the manual page, memventi.8.
+
+
+# author & license.
+
+this code was written by mechiel lukkien, mechiel@ueber.net or
+mechiel@xs4all.nl.  all code is in the public domain.
+
+
+# todo
+
+see the caveats-section in the manual page, and the file todo.txt.
