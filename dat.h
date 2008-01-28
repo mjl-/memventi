@@ -9,7 +9,6 @@ typedef uvlong uint64;
 
 enum {
 	Magicsize	= 4,
-	Tablemagicsize	= 4,
 	Scoresize	= 20,
 	Indexscoresize	= 8,
 	Diskiheadersize	= Indexscoresize+1+6,
@@ -23,10 +22,7 @@ enum {
 	Stringmax	= 1024,
 
 	Headermagic	= 0x2f9d81e5,
-	Indexmagic	= 0x119dab59,
-	Tablemagic	= 0x5dc31acd,
 };
-/*	Tableheadersize = Tablemagisize+1+ */
 
 
 typedef struct DHeader DHeader;

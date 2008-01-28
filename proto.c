@@ -90,9 +90,9 @@ readvmsg(FILE *f, Vmsg *m, uchar *buf)
 	m->data = nil;
 	switch(m->op) {
 	case Thello:
-		if(readstr(&p, end, nil, 0) == 0)
+		if(readstr(&p, end, nil, 0) == 0)	/* version */
 			return 0;
-		if(readstr(&p, end, nil, 0) == 0)
+		if(readstr(&p, end, nil, 0) == 0)	/* uid */
 			return 0;
 		if(p+1 > end)
 			return 0;

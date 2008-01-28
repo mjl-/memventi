@@ -69,6 +69,7 @@ static int state;
 static pthread_t readlistenthread[Listenmax];
 static pthread_t writelistenthread[Listenmax];
 static pthread_t syncprocthread;
+static int nreadaddrs, nwriteaddrs;
 static int nreadlistens, nwritelistens;
 
 static uvlong nlookups;
@@ -732,7 +733,7 @@ connproc(void *p)
 	Vmsg in, out;
 	char buf[128];
 	char *l;
-	char handshake[] = "venti-02-simple\n";
+	char handshake[] = "venti-02-memventi\n";
 	DHeader dh;
 	int ok, okhdr;
 	int len;
@@ -946,6 +947,8 @@ connproc(void *p)
 			if(allowwrite)
 				safe_sync();
 			break;
+		case Tping:
+			break;
 		case Tgoodbye:
 			if(allowwrite)
 				safe_sync();
@@ -1099,34 +1102,42 @@ signalproc(void *p)
 
 
 int
-dobind(Netaddr *netaddr)
+dobind(int *fds, int fdi, Netaddr *netaddr)
 {
-	struct sockaddr bound;
-	socklen_t boundlen;
 	int gaierr;
-	struct addrinfo *addrs;
-        struct addrinfo localhints = { AI_PASSIVE, PF_INET, SOCK_STREAM, 0, 0, NULL, NULL, NULL };
-	int listenfd;
+	struct addrinfo *addrs0, *addrs;
+	struct addrinfo localhints;
+	int n;
+	int fd;
 
-	listenfd = socket(PF_INET, SOCK_STREAM, 0);
-	if(listenfd < 0)
-		errsyslog(1, "socket");
+	memset(&localhints, 0, sizeof localhints);
+	localhints.ai_family = PF_UNSPEC;
+	localhints.ai_socktype = SOCK_STREAM;
+	localhints.ai_flags = AI_PASSIVE;
 
 	gaierr = getaddrinfo(netaddr->host, netaddr->port, &localhints, &addrs);
 	if(gaierr)
 		errxsyslog(1, "getaddrinfo: %s", gai_strerror(gaierr));
+	addrs0 = addrs;
 
-	boundlen = addrs->ai_addrlen;
-	memcpy(&bound, addrs->ai_addr, boundlen);
-	freeaddrinfo(addrs);
+	n = 0;
+	for(; addrs != nil; addrs = addrs->ai_next) {
+		fd = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
+		if(fd < 0)
+			errsyslog(1, "socket");
 
-	if(bind(listenfd, &bound, boundlen) != 0)
-		errsyslog(1, "bind");
+		if(bind(fd, addrs->ai_addr, addrs->ai_addrlen) != 0)
+			errsyslog(1, "bind");
 
-	if(listen(listenfd, 1) != 0)
-		errsyslog(1, "listen");
-
-	return listenfd;
+		if(listen(fd, 5) != 0)
+			errsyslog(1, "listen");
+		if(fdi >= Listenmax)
+			errsyslog(1, "too many sockets");
+		fds[fdi++] = fd;
+		n += 1;
+	}
+	freeaddrinfo(addrs0);
+	return n;
 }
 
 
@@ -1171,7 +1182,7 @@ main(int argc, char *argv[])
 
 	fflag = 0;
 	vflag = 0;
-	nreadlistens = nwritelistens = 0;
+	nreadaddrs = nwriteaddrs = 0;
 	while((ch = getopt(argc, argv, "Dfvd:i:r:w:")) != -1) {
 		switch(ch) {
 		case 'D':
@@ -1187,9 +1198,9 @@ main(int argc, char *argv[])
 			indexfile = optarg;
 			break;
 		case 'r':
-			if(nreadlistens == nelem(readaddrs))
+			if(nreadaddrs == nelem(readaddrs))
 				errxsyslog(1, "too many read-only hosts specified");
-			netaddr = &readaddrs[nreadlistens++];
+			netaddr = &readaddrs[nreadaddrs++];
 			netaddr->port = strrchr(optarg, '!');
 			if(netaddr->port != nil)
 				*netaddr->port++ = '\0';
@@ -1198,9 +1209,9 @@ main(int argc, char *argv[])
 			netaddr->host = optarg;
 			break;
 		case 'w':
-			if(nreadlistens == nelem(writeaddrs))
+			if(nwriteaddrs == nelem(writeaddrs))
 				errxsyslog(1, "too many read/write hosts specified");
-			netaddr = &writeaddrs[nwritelistens++];
+			netaddr = &writeaddrs[nwriteaddrs++];
 			netaddr->port = strrchr(optarg, '!');
 			if(netaddr->port != nil)
 				*netaddr->port++ = '\0';
@@ -1231,19 +1242,20 @@ main(int argc, char *argv[])
 	endaddr = (1ULL<<addrwidth)-1;
 	mementrysize = 8+entryscorewidth+addrwidth;
 
-	if(nreadlistens == 0 && nwritelistens == 0) {
+	if(nreadaddrs == 0 && nwriteaddrs == 0) {
 		writeaddrs[0].host = "localhost";
 		writeaddrs[0].port = defaultport;
-		nwritelistens++;
+		nwriteaddrs++;
 	}
 
 	openlog("memventi", LOG_CONS|(fflag ? LOG_PERROR : 0), LOG_DAEMON);
 	setlogmask(LOG_UPTO(vflag ? LOG_DEBUG : LOG_NOTICE));
 
-	for(i = 0; i < nreadlistens; i++)
-		readfds[i] = dobind(&readaddrs[i]);
-	for(i = 0; i < nwritelistens; i++)
-		writefds[i] = dobind(&writeaddrs[i]);
+	nreadlistens = nwritelistens = 0;
+	for(i = 0; i < nreadaddrs; i++)
+		nreadlistens += dobind(readfds, nreadlistens, &readaddrs[i]);
+	for(i = 0; i < nwriteaddrs; i++)
+		nwritelistens += dobind(writefds, nwritelistens, &writeaddrs[i]);
 
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGPIPE);
