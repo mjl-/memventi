@@ -15,6 +15,7 @@ lockedmalloc(ulong len)
 {
 	void *p, *alignedp;
 	long pagesize;
+	static int mlockwarn = 0;
 
 	pagesize = sysconf(_SC_PAGESIZE);
 	if(pagesize == -1)
@@ -24,10 +25,9 @@ lockedmalloc(ulong len)
 	if(p == nil)
 		return nil;
 	alignedp = (void*)(((uintptr_t)p + pagesize - 1)&~(pagesize-1));
-	if(mlock(alignedp, len) != 0) {
+	if(mlock(alignedp, len) != 0 && mlockwarn == 0) {
 		syslog(LOG_WARNING, "mlock failed on memory of len=%lu", len);
-		free(p);
-		return nil;
+		mlockwarn++;
 	}
 	debug(LOG_DEBUG, "lockedmalloc, %lu bytes allocated", len);
 	return alignedp;
