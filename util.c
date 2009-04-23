@@ -26,7 +26,7 @@ lockedmalloc(ulong len)
 		return nil;
 	alignedp = (void*)(((uintptr_t)p + pagesize - 1)&~(pagesize-1));
 	if(mlock(alignedp, len) != 0 && mlockwarn == 0) {
-		syslog(LOG_WARNING, "mlock failed on memory of len=%lu", len);
+		syslog_r(LOG_WARNING, &sdata, "mlock failed on memory of len=%lu", len);
 		mlockwarn++;
 	}
 	debug(LOG_DEBUG, "lockedmalloc, %lu bytes allocated", len);
@@ -50,7 +50,7 @@ errsyslog(int eval, const char *fmt, ...)
 		p = msg+len;
 		snprintf(p, sizeof msg-len, ": %s", strerror(errno));
 	}
-	syslog(LOG_ERR, "%s", msg);
+	syslog_r(LOG_ERR, &sdata, "%s", msg);
 	exit(eval);
 }
 
@@ -61,7 +61,7 @@ errxsyslog(int eval, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	vsyslog(LOG_ERR, fmt, ap);
+	vsyslog_r(LOG_ERR, &sdata, fmt, ap);
 	va_end(ap);
 	exit(eval);
 }

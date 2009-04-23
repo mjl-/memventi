@@ -35,6 +35,8 @@ struct Netaddr {
 	char *port;
 };
 
+struct syslog_data sdata = SYSLOG_DATA_INIT;
+
 static int fflag;
 static int vflag;
 
@@ -340,13 +342,13 @@ disklookup(uvlong *addr, int naddr, uchar *score, uchar type, int readdata, ucha
 		n = preadn(datafd, data, want, offset);
 		if(n <= 0) {
 			*errmsg = "error reading header";
-			syslog(LOG_WARNING, "disklookup: error reading header for block at offset=%llu, score=%s type=%d: %s",
+			syslog_r(LOG_WARNING, &sdata, "disklookup: error reading header for block at offset=%llu, score=%s type=%d: %s",
 				offset, scorestr(score), (int)type, (n < 0) ? strerror(errno) : "end of file");
 			continue;
 		}
 		if(n < Diskdheadersize) {
 			*errmsg = "short read for header";
-			syslog(LOG_WARNING, "disklookup: short read for header for block at offset=%llu, have=%d, score=%s type=%d",
+			syslog_r(LOG_WARNING, &sdata, "disklookup: short read for header for block at offset=%llu, have=%d, score=%s type=%d",
 				offset, n, scorestr(score), (int)type);
 			continue;
 		}
@@ -354,7 +356,7 @@ disklookup(uvlong *addr, int naddr, uchar *score, uchar type, int readdata, ucha
 		err = unpackdheader(data, dh);
 		if(err != nil) {
 			*errmsg = err;
-			syslog(LOG_WARNING, "disklookup: unpacking header for block at offset=%llu, score=%s type=%d: %s",
+			syslog_r(LOG_WARNING, &sdata, "disklookup: unpacking header for block at offset=%llu, score=%s type=%d: %s",
 				offset, scorestr(score), (int)type, *errmsg);
 			continue;
 		}
@@ -367,12 +369,12 @@ disklookup(uvlong *addr, int naddr, uchar *score, uchar type, int readdata, ucha
 				n = preadn(datafd, data, dh->size, offset+Diskdheadersize);
 				if(n <= 0) {
 					*errmsg = "disklookup: error reading data";
-					syslog(LOG_WARNING, "error reading data for block at offset=%llu, score=%s type=%d: %s",
+					syslog_r(LOG_WARNING, &sdata, "error reading data for block at offset=%llu, score=%s type=%d: %s",
 						offset, scorestr(score), (int)type, (n < 0) ? strerror(errno) : "end of file");
 				}
 				if(n != dh->size) {
 					*errmsg = "disklookup: short read for data";
-					syslog(LOG_WARNING, "short read for data for block at offset=%llu, have=%d, score=%s type=%d",
+					syslog_r(LOG_WARNING, &sdata, "short read for data for block at offset=%llu, have=%d, score=%s type=%d",
 						offset, n, scorestr(score), (int)type);
 				}
 			} else {
@@ -381,7 +383,7 @@ disklookup(uvlong *addr, int naddr, uchar *score, uchar type, int readdata, ucha
 			sha1(diskscore, data, dh->size);
 			if(memcmp(diskscore, score, Scoresize) != 0) {
 				*errmsg = "score on disk invalid";
-				syslog(LOG_ALERT, "disklookup: datafile %s has wrong score (has %s, claims %s) in block at offset=%llu size=%d type=%d",
+				syslog_r(LOG_ALERT, &sdata, "disklookup: datafile %s has wrong score (has %s, claims %s) in block at offset=%llu size=%d type=%d",
 					datafile, scorestr(diskscore), scorestr(dh->score), offset, (int)dh->size, (int)dh->type);
 				return ~0ULL;
 			}
@@ -405,7 +407,7 @@ indexstore(IHeader *ih)
 		snprintf(errmsg, sizeof errmsg,
 			"indexstore: writing header to indexfile %s at offset=%llu for datafile block at offset=%llu: %s",
 			indexfile, indexfilesize, ih->offset, (n < 0) ? strerror(errno) : "end of file");
-		syslog(LOG_ALERT, "%s", errmsg);
+		syslog_r(LOG_ALERT, &sdata, "%s", errmsg);
 		return errmsg;
 	}
 	if(n != sizeof ihbuf) {
@@ -413,7 +415,7 @@ indexstore(IHeader *ih)
 			"indexstore: short write for header to indexfile %s at offset=%llu for datafile block at offset=%llu, "
 			"dangling bytes at end of datafile %s",
 			indexfile, indexfilesize, ih->offset, datafile);
-		syslog(LOG_ALERT, "%s", errmsg);
+		syslog_r(LOG_ALERT, &sdata, "%s", errmsg);
 		return errmsg;
 	}
 	return nil;
@@ -436,24 +438,24 @@ store(DHeader *dh, uchar *data)
 
 	n = pwrite(datafd, buf, sizeof buf, offset);
 	if(n <= 0) {
-		syslog(LOG_ALERT, "store: writing header to datafile %s, block at offset=%llu, %s: %s",
+		syslog_r(LOG_ALERT, &sdata, "store: writing header to datafile %s, block at offset=%llu, %s: %s",
 			datafile, offset, dheaderfmt(dh), (n < 0) ? strerror(errno) : "end of file");
 		return ~0ULL;
 	}
 	if(n != sizeof buf) {
-		syslog(LOG_ALERT, "store: short write for header, %d dangling bytes at end of datafile %s, block at offset=%llu, %s",
+		syslog_r(LOG_ALERT, &sdata, "store: short write for header, %d dangling bytes at end of datafile %s, block at offset=%llu, %s",
 			n, datafile, offset, dheaderfmt(dh));
 		return ~0ULL;
 	}
 
 	n = pwrite(datafd, data, dh->size, offset+Diskdheadersize);
 	if(n <= 0) {
-		syslog(LOG_ALERT, "store: writing data to datafile %s, block at offset=%llu, %s: %s",
+		syslog_r(LOG_ALERT, &sdata, "store: writing data to datafile %s, block at offset=%llu, %s: %s",
 			datafile, offset, dheaderfmt(dh), (n < 0) ? strerror(errno) : "end of file");
 		return ~0ULL;
 	}
 	if(n != dh->size) {
-		syslog(LOG_ALERT, "store: short write for data, %d dangling bytes at end of datafile %s, "
+		syslog_r(LOG_ALERT, &sdata, "store: short write for data, %d dangling bytes at end of datafile %s, "
 			"block at offset=%llu, %s, header for partly written block remains at end of file!",
 			n+Diskdheadersize, datafile, offset, dheaderfmt(dh));
 		return ~0ULL;
@@ -667,7 +669,7 @@ init(void)
 		dataread += Diskdheadersize+dh.size;
 		nindexadded++;
 	}
-	syslog(LOG_NOTICE, "added %llu entries from datafile (%llu bytes in datafile) to indexfile, in %.3fs",
+	syslog_r(LOG_NOTICE, &sdata, "added %llu entries from datafile (%llu bytes in datafile) to indexfile, in %.3fs",
 		nindexadded, dataread, (msec()-start)/1000.0);
 	nblocks = indexfilesize / Diskiheadersize;
 
@@ -709,7 +711,7 @@ init(void)
 			errxsyslog(1, "error inserting in memory for indexfile offset=%llu", off);
 		off += sizeof ihbuf;
 	}
-	syslog(LOG_NOTICE, "init done, %llu bytes for heads, read %llu bytes in %.3fs from index, entire startup in %.3fs",
+	syslog_r(LOG_NOTICE, &sdata, "init done, %llu bytes for heads, read %llu bytes in %.3fs from index, entire startup in %.3fs",
 		len, indexfilesize, (msec()-start)/1000.0, (msec()-totalstart)/1000.0);
 
 	for(i = 0; i < nelem(diskhisto); i++)
@@ -819,7 +821,7 @@ connproc(void *p)
 
 		switch(in.op) {
 		case Thello:
-			syslog(LOG_INFO, "read Thello after handshake");
+			syslog_r(LOG_INFO, &sdata, "read Thello after handshake");
 			goto done;
 			break;
 		case Tread:
@@ -856,7 +858,7 @@ connproc(void *p)
 				if(out.data == nil) {
 					out.op = Rerror;
 					out.msg = "out of memory";
-					syslog(LOG_WARNING, "connproc: out of memory for read of size %u", (uint)dh.size);
+					syslog_r(LOG_WARNING, &sdata, "connproc: out of memory for read of size %u", (uint)dh.size);
 					break;
 				}
 				memcpy(out.data, databuf, dh.size);
@@ -931,14 +933,14 @@ connproc(void *p)
 				stateset(Sdegraded);
 				out.op = Rerror;
 				out.msg = "error writing block";
-				syslog(LOG_WARNING, "connproc: error writing data, degraded to read-only mode");
+				syslog_r(LOG_WARNING, &sdata, "connproc: error writing data, degraded to read-only mode");
 				break;
 			}
 			if(okhdr == 0) {
 				stateset(Sdegraded);
 				out.op = Rerror;
 				out.msg = "out of memory";
-				syslog(LOG_WARNING, "connproc: out of memory for storing index entry, "
+				syslog_r(LOG_WARNING, &sdata, "connproc: out of memory for storing index entry, "
 					"data file was written, degraded to read-only mode");
 				break;
 			}
@@ -954,7 +956,7 @@ connproc(void *p)
 				safe_sync();
 			goto done;
 		default:
-			syslog(LOG_NOTICE, "invalid op %d", in.op);
+			syslog_r(LOG_NOTICE, &sdata, "invalid op %d", in.op);
 			goto done;
 			break;
 		}
@@ -1000,7 +1002,7 @@ listenproc(void *p)
 
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, nil);
 
-	syslog(LOG_NOTICE, "listenproc: accepting connections...");
+	syslog_r(LOG_NOTICE, &sdata, "listenproc: accepting connections...");
 	for(;;) {
 		fd = accept(listenfd, (struct sockaddr *)&addr, &len);
 		if(fd < 0)
@@ -1034,7 +1036,7 @@ listenproc(void *p)
 			free(args->buf);
 		free(args);
 		free(thread);
-		syslog(LOG_WARNING, "listenproc: could not create process: %s", strerror(errno));
+		syslog_r(LOG_WARNING, &sdata, "listenproc: could not create process: %s", strerror(errno));
 	}
 	return nil;
 }
@@ -1067,7 +1069,7 @@ signalproc(void *p)
 	for(;;) {
 		sig = 0;
 		if(sigwait(&mask, &sig) != 0)
-			syslog(LOG_NOTICE, "sigwait returned an error, sig=%d: %s", sig, strerror(sig));
+			syslog_r(LOG_NOTICE, &sdata, "sigwait returned an error, sig=%d: %s", sig, strerror(sig));
 
 		switch(sig) {
 		case SIGUSR1:
@@ -1079,7 +1081,7 @@ signalproc(void *p)
 		case SIGINT:
 		case SIGTERM:
 			stateset(Sclosing);
-			syslog(LOG_INFO, "closing down");
+			syslog_r(LOG_INFO, &sdata, "closing down");
 			for(i = 0; i < nreadlistens; i++)
 				pthread_cancel(readlistenthread[i]);
 			for(i = 0; i < nwritelistens; i++)
@@ -1091,11 +1093,11 @@ signalproc(void *p)
 			pthread_cancel(syncprocthread);
 			fsync(datafd);
 			fsync(indexfd);
-			syslog(LOG_NOTICE, "data and index flushed, exiting...");
+			syslog_r(LOG_NOTICE, &sdata, "data and index flushed, exiting...");
 			exit(0);
 			break;
 		default:
-			syslog(LOG_NOTICE, "unexpected signal (%d)", sig);
+			syslog_r(LOG_NOTICE, &sdata, "unexpected signal (%d)", sig);
 		}
 	}
 }
@@ -1248,7 +1250,7 @@ main(int argc, char *argv[])
 		nwriteaddrs++;
 	}
 
-	openlog("memventi", LOG_CONS|(fflag ? LOG_PERROR : 0), LOG_DAEMON);
+	openlog_r("memventi", LOG_CONS|(fflag ? LOG_PERROR : 0), LOG_DAEMON, &sdata);
 	setlogmask(LOG_UPTO(vflag ? LOG_DEBUG : LOG_NOTICE));
 
 	nreadlistens = nwritelistens = 0;

@@ -87,3 +87,4 @@ struct RWLock {
 };
 
 extern int debugflag;
+extern struct syslog_data sdata;
