@@ -107,5 +107,3 @@ should be the biggest help to remove trailing partially written blocks.
 Starting up is slow since the entire table has to be read in memory.
 .Pp
 Calc.py should be explained better.  Some important things:  start-end ranges can be specified as numbers with a prefix such as k, m, g, etc.  Multiple ranges can be specified, each separated by a comma.
-.Pp
-Memventi first binds to addresses, then initializes (involving a fork) and only then starts accepting connections.  On OpenBSD, this does not work:  new connections are not "seen" by the accept.  The solution is to first initialize and then bind and accept.

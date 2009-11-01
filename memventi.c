@@ -726,6 +726,27 @@ init(void)
 			errxsyslog(1, "init hash table lock");
 }
 
+static int
+compatible(char *s)
+{
+	char *ee, *e;
+
+	if(strlen(s) < 6 || strncmp(s, "venti-", 6) != 0)
+		return 0;
+	s += 6;
+	ee = strchr(s, '-');
+	if(ee == nil)
+		return 0;
+	while(s < ee) {
+		e = strchr(s+1, ':');
+		if(e == nil)
+			e = ee;
+		if(e-s == 2 && strncmp(s, "02", 2) == 0)
+			return 1;
+		s = e+1;
+	}
+	return 0;
+}
 
 static void *
 connproc(void *p)
@@ -770,7 +791,7 @@ connproc(void *p)
 	}
 
 	l = fgets(buf, sizeof buf, f);
-	if(l == nil || strncmp(l, "venti-02", 8) != 0) {
+	if(l == nil || !compatible(l)) {
 		debug(LOG_DEBUG, "error reading protocol handshake or wrong protocol version: %s",
 			ferror(f) ? strerror(errno) : "eof");
 		goto done;
